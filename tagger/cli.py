@@ -1,16 +1,14 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-
 import click
-import csv
-@click.group()
-def cli():
-    pass
+from tagger import ResourceTagger
 
-@cli.command()
+@click.command()
 @click.option('--resource', help='Resource ID.')
-def tag(resource):
-    print resource
+def cli(resource):
+    tags = {'Owner': 'Patrick Cullen'}
+    tagger = ResourceTagger()
+    tagger.tag(resource, tags)
 
 if __name__ == '__main__':
     cli()
