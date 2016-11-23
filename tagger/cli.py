@@ -16,7 +16,7 @@ def cli(dryrun, verbose, resource, tag, csv):
         print "Cannot use --resource or --tag with --csv option"
         sys.exit(1)
     if csv:
-        tagger = CSVResourceTagger()
+        tagger = CSVResourceTagger(dryrun, verbose)
         tagger.tag(csv)
     else:
         tagger = MultipleResourceTagger(dryrun, verbose)

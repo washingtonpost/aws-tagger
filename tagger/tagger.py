@@ -2,6 +2,7 @@ import os
 import boto3
 import botocore
 from retrying import retry
+import csv
 
 def _format_dict(tags):
     output = []
@@ -29,6 +30,8 @@ class SingleResourceTagger(object):
     def tag(self, resource_id, tags):
         if resource_id.startswith('i-'):
             self.ec2.tag_instance(resource_id, tags)
+        elif resource_id == "":
+            return
         else:
             print "Tagging is not supported for this resource %s" % resource_id
 
@@ -41,7 +44,39 @@ class MultipleResourceTagger(object):
             self.tagger.tag(resource_id, tags)
 
 class CSVResourceTagger(object):
-    pass
+    def __init__(self, dryrun, verbose):
+        self.tagger = SingleResourceTagger(dryrun, verbose)
+        self.resource_id_column = 'Id'
+
+    def tag(self, filename):
+        with open(filename, 'rU') as csv_file:
+            reader = csv.reader(csv_file)
+            header_row = True
+            tag_index = None
+
+            for row in reader:
+                if header_row:
+                    header_row = False
+                    tag_index = self._parse_header(row)
+                else:
+                    self._tag_resource(tag_index, row)
+
+    def _parse_header(self, header_row):
+        tag_index = {}
+        for index, name in enumerate(header_row):
+            tag_index[name] = index
+
+        return tag_index
+
+    def _tag_resource(self, tag_index, row):
+        resource_id = row[tag_index[self.resource_id_column]]
+        tags = {}
+        for key, index in tag_index.iteritems():
+            if key != self.resource_id_column:
+                tags[key] = row[index]
+
+        self.tagger.tag(resource_id, tags)
+
 
 class EC2Tagger(object):
     def __init__(self, dryrun, verbose):
@@ -60,6 +95,6 @@ class EC2Tagger(object):
         return not isinstance(exception, botocore.exceptions.ClientError) or \
             (exception.response["Error"]["Code"] in ['RequestLimitExceeded'])
 
-    @retry(retry_on_exception=_is_retryable_exception, stop_max_delay=5000, wait_exponential_multiplier=100)
+    @retry(retry_on_exception=_is_retryable_exception, stop_max_delay=30000, wait_exponential_multiplier=1000)
     def _ec2_create_tags(self, **kwargs):
         return self.ec2.create_tags(**kwargs)
