@@ -78,24 +78,43 @@ class CSVResourceTagger(object):
 
         self.tagger.tag(resource_id, tags)
 
-
 class EC2Tagger(object):
     def __init__(self, dryrun, verbose):
         self.dryrun = dryrun
         self.verbose = verbose
         self.ec2 = _client('ec2')
+        self.volume_cache = {}
+        #TODO implement paging for describe instances
+        reservations = self._ec2_describe_instances(MaxResults=1000)
+
+        for reservation in reservations["Reservations"]:
+            for instance in reservation["Instances"]:
+                instance_id = instance['InstanceId']
+                volumes = instance.get('BlockDeviceMappings', [])
+                self.volume_cache[instance_id] = []
+                for volume in volumes:
+                    ebs = volume.get('Ebs', {})
+                    volume_id = ebs.get('VolumeId')
+                    if volume_id:
+                        self.volume_cache[instance_id].append(volume_id)
 
     def tag_instance(self, instance_id, tags):
         aws_tags = _dict_to_aws_tags(tags)
+        resource_ids = [instance_id]
+        resource_ids.extend(self.volume_cache.get(instance_id, []))
         if self.verbose:
-            print "tagging %s with %s" % (instance_id, _format_dict(tags))
+            print "tagging %s with %s" % (", ".join(resource_ids), _format_dict(tags))
         if not self.dryrun:
-            self._ec2_create_tags(Resources=[instance_id], Tags=aws_tags)
+            self._ec2_create_tags(Resources=resource_ids, Tags=aws_tags)
 
     def _is_retryable_exception(exception):
         return not isinstance(exception, botocore.exceptions.ClientError) or \
             (exception.response["Error"]["Code"] in ['RequestLimitExceeded'])
 
     @retry(retry_on_exception=_is_retryable_exception, stop_max_delay=30000, wait_exponential_multiplier=1000)
+    def _ec2_describe_instances(self, **kwargs):
+        return self.ec2.describe_instances(**kwargs)
+
+    #@retry(retry_on_exception=_is_retryable_exception, stop_max_delay=30000, wait_exponential_multiplier=1000)
     def _ec2_create_tags(self, **kwargs):
         return self.ec2.create_tags(**kwargs)
