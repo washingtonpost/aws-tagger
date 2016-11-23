@@ -72,8 +72,9 @@ class CSVResourceTagger(object):
         resource_id = row[tag_index[self.resource_id_column]]
         tags = {}
         for key, index in tag_index.iteritems():
-            if key != self.resource_id_column:
-                tags[key] = row[index]
+            value = row[index]
+            if key != self.resource_id_column and value != "":
+                tags[key] = value
 
         self.tagger.tag(resource_id, tags)
 
