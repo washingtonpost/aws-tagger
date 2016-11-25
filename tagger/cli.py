@@ -8,18 +8,20 @@ from pprint import pprint
 @click.command()
 @click.option('--dryrun/--no-dryrun', default=False, help='Verbose output.')
 @click.option('--verbose/--no-verbose', default=False, help='Verbose output.')
+@click.option('--region', help='AWS region.')
+@click.option('--role', help='IAM role to use.')
 @click.option('--resource', multiple=True, help='Resource ID to tag.')
 @click.option('--tag', multiple=True, help='Tag to apply to resource in format "Key:Value".')
 @click.option('--csv', help='CSV file to read data from.')
-def cli(dryrun, verbose, resource, tag, csv):
+def cli(dryrun, verbose, region, role, resource, tag, csv):
     if csv and (len(resource) > 0 or len(tag) > 0):
         print "Cannot use --resource or --tag with --csv option"
         sys.exit(1)
     if csv:
-        tagger = CSVResourceTagger(dryrun, verbose)
+        tagger = CSVResourceTagger(dryrun, verbose, role, region)
         tagger.tag(csv)
     else:
-        tagger = MultipleResourceTagger(dryrun, verbose)
+        tagger = MultipleResourceTagger(dryrun, verbose, role, region)
         tags = _tag_options_to_dict(tag)
         tagger.tag(resource, tags)
 
