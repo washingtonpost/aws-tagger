@@ -27,7 +27,7 @@ def _format_dict(tags):
     return ", ".join(output)
 
 def _dict_to_aws_tags(tags):
-    return [{'Key': key, 'Value': value} for key, value in tags.iteritems() if not key.startswith('aws:') and not key.startswith('Name')]
+    return [{'Key': key, 'Value': value} for key, value in tags.iteritems() if not key.startswith('aws:')]
 
 def _aws_tags_to_dict(aws_tags):
     return {x['Key']: x['Value'] for x in aws_tags if not x['Key'].startswith('aws:')}
@@ -71,6 +71,9 @@ class SingleResourceTagger(object):
 
     def tag(self, resource_id, tags):
         if resource_id == "":
+            return
+
+        if len(tags) == 0:
             return
 
         tagger = None
