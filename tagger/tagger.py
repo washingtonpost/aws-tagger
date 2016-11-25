@@ -5,13 +5,18 @@ from retrying import retry
 import socket
 import csv
 
+def _is_retryable_exception(exception):
+    return not isinstance(exception, botocore.exceptions.ClientError) or \
+        (exception.response["Error"]["Code"] in ['RequestLimitExceeded', 'Throttling'])
+
 def _arn_to_name(resource_arn):
-    #Example: arn:aws:elasticloadbalancing:us-east-1:397853141546:loadbalancer/pb-adn-arc2
+    # Example: arn:aws:elasticloadbalancing:us-east-1:397853141546:loadbalancer/pb-adn-arc2
     parts = resource_arn.split(':')
     name = parts[-1]
     parts = name.split('/', 1)
     if len(parts) == 2:
         name = parts[-1]
+
     return name
 
 def _format_dict(tags):
@@ -61,6 +66,8 @@ class SingleResourceTagger(object):
         self.taggers['elasticloadbalancing'] = LBTagger(dryrun, verbose, role=role, region=region)
         self.taggers['elasticache'] = ElasticacheTagger(dryrun, verbose, role=role, region=region)
         self.taggers['s3'] = S3Tagger(dryrun, verbose, role=role, region=region)
+        self.taggers['es'] = ESTagger(dryrun, verbose, role=role, region=region)
+        self.taggers['kinesis'] = KinesisTagger(dryrun, verbose, role=role, region=region)
 
     def tag(self, resource_id, tags):
         if resource_id == "":
@@ -183,10 +190,6 @@ class EC2Tagger(object):
                     raise exception
 
 
-    def _is_retryable_exception(exception):
-        return not isinstance(exception, botocore.exceptions.ClientError) or \
-            (exception.response["Error"]["Code"] in ['RequestLimitExceeded'])
-
     @retry(retry_on_exception=_is_retryable_exception, stop_max_delay=30000, wait_exponential_multiplier=1000)
     def _ec2_describe_instances(self, **kwargs):
         return self.ec2.describe_instances(**kwargs)
@@ -216,10 +219,6 @@ class EFSTagger(object):
                 else:
                     raise exception
 
-    def _is_retryable_exception(exception):
-        return not isinstance(exception, botocore.exceptions.ClientError) or \
-            (exception.response["Error"]["Code"] in ['RequestLimitExceeded'])
-
     @retry(retry_on_exception=_is_retryable_exception, stop_max_delay=30000, wait_exponential_multiplier=1000)
     def _efs_create_tags(self, **kwargs):
         return self.efs.create_tags(**kwargs)
@@ -243,10 +242,6 @@ class RDSTagger(object):
                 else:
                     raise exception
 
-    def _is_retryable_exception(exception):
-        return not isinstance(exception, botocore.exceptions.ClientError) or \
-            (exception.response["Error"]["Code"] in ['RequestLimitExceeded'])
-
     @retry(retry_on_exception=_is_retryable_exception, stop_max_delay=30000, wait_exponential_multiplier=1000)
     def _rds_add_tags_to_resource(self, **kwargs):
         return self.rds.add_tags_to_resource(**kwargs)
@@ -259,7 +254,6 @@ class LBTagger(object):
         self.alb = _client('elbv2', role=role, region=region)
 
     def tag(self, resource_arn, tags):
-        elb_name = _arn_to_name(resource_arn)
         aws_tags = _dict_to_aws_tags(tags)
 
         if self.verbose:
@@ -269,16 +263,13 @@ class LBTagger(object):
                 if ':loadbalancer/app/' in resource_arn:
                     self._alb_add_tags(ResourceArns=[resource_arn], Tags=aws_tags)
                 else:
+                    elb_name = _arn_to_name(resource_arn)
                     self._elb_add_tags(LoadBalancerNames=[elb_name], Tags=aws_tags)
             except botocore.exceptions.ClientError as exception:
                 if exception.response["Error"]["Code"] in ['LoadBalancerNotFound']:
                     print "Resource not found: %s" % resource_arn
                 else:
                     raise exception
-
-    def _is_retryable_exception(exception):
-        return not isinstance(exception, botocore.exceptions.ClientError) or \
-            (exception.response["Error"]["Code"] in ['RequestLimitExceeded'])
 
     @retry(retry_on_exception=_is_retryable_exception, stop_max_delay=30000, wait_exponential_multiplier=1000)
     def _elb_add_tags(self, **kwargs):
@@ -287,6 +278,52 @@ class LBTagger(object):
     @retry(retry_on_exception=_is_retryable_exception, stop_max_delay=30000, wait_exponential_multiplier=1000)
     def _alb_add_tags(self, **kwargs):
         return self.alb.add_tags(**kwargs)
+
+class KinesisTagger(object):
+    def __init__(self, dryrun, verbose, role=None, region=None):
+        self.dryrun = dryrun
+        self.verbose = verbose
+        self.kinesis = _client('kinesis', role=role, region=region)
+
+    def tag(self, resource_arn, tags):
+        if self.verbose:
+            print "tagging %s with %s" % (resource_arn, _format_dict(tags))
+        if not self.dryrun:
+            try:
+                stream_name = _arn_to_name(resource_arn)
+                self._kinesis_add_tags_to_stream(StreamName=stream_name, Tags=tags)
+            except botocore.exceptions.ClientError as exception:
+                if exception.response["Error"]["Code"] in ['ResourceNotFoundException']:
+                    print "Resource not found: %s" % resource_arn
+                else:
+                    raise exception
+
+    @retry(retry_on_exception=_is_retryable_exception, stop_max_delay=30000, wait_exponential_multiplier=1000)
+    def _kinesis_add_tags_to_stream(self, **kwargs):
+        return self.kinesis.add_tags_to_stream(**kwargs)
+
+class ESTagger(object):
+    def __init__(self, dryrun, verbose, role=None, region=None):
+        self.dryrun = dryrun
+        self.verbose = verbose
+        self.es = _client('es', role=role, region=region)
+
+    def tag(self, resource_arn, tags):
+        aws_tags = _dict_to_aws_tags(tags)
+        if self.verbose:
+            print "tagging %s with %s" % (resource_arn, _format_dict(tags))
+        if not self.dryrun:
+            try:
+                self._es_add_tags(ARN=resource_arn, TagList=aws_tags)
+            except botocore.exceptions.ClientError as exception:
+                if exception.response["Error"]["Code"] in ['ValidationException']:
+                    print "Resource not found: %s" % resource_arn
+                else:
+                    raise exception
+
+    @retry(retry_on_exception=_is_retryable_exception, stop_max_delay=30000, wait_exponential_multiplier=1000)
+    def _es_add_tags(self, **kwargs):
+        return self.es.add_tags(**kwargs)
 
 class ElasticacheTagger(object):
     def __init__(self, dryrun, verbose, role=None, region=None):
@@ -307,10 +344,6 @@ class ElasticacheTagger(object):
                 else:
                     raise exception
 
-    def _is_retryable_exception(exception):
-        return not isinstance(exception, botocore.exceptions.ClientError) or \
-            (exception.response["Error"]["Code"] in ['RequestLimitExceeded'])
-
     @retry(retry_on_exception=_is_retryable_exception, stop_max_delay=30000, wait_exponential_multiplier=1000)
     def _elasticache_add_tags_to_resource(self, **kwargs):
         return self.elasticache.add_tags_to_resource(**kwargs)
@@ -322,11 +355,10 @@ class S3Tagger(object):
         self.s3 = _client('s3', role=role, region=region)
 
     def tag(self, bucket_name, tags):
-        tags = {}
         try:
             response = self._s3_get_bucket_tagging(Bucket=bucket_name)
             # add existing tags
-            for key, value in self._aws_tags_to_dict(response.get('TagSet', [])).iteritems:
+            for key, value in _aws_tags_to_dict(response.get('TagSet', [])).iteritems():
                 if key not in tags:
                     tags[key] = value
         except botocore.exceptions.ClientError as exception:
@@ -344,10 +376,6 @@ class S3Tagger(object):
                     print "Resource not found: %s" % bucket_name
                 else:
                     raise exception
-
-    def _is_retryable_exception(exception):
-        return not isinstance(exception, botocore.exceptions.ClientError) or \
-            (exception.response["Error"]["Code"] in ['RequestLimitExceeded'])
 
     @retry(retry_on_exception=_is_retryable_exception, stop_max_delay=30000, wait_exponential_multiplier=1000)
     def _s3_get_bucket_tagging(self, **kwargs):
