@@ -5,6 +5,15 @@ from retrying import retry
 import socket
 import csv
 
+def _arn_to_name(resource_arn):
+    #Example: arn:aws:elasticloadbalancing:us-east-1:397853141546:loadbalancer/pb-adn-arc2
+    parts = resource_arn.split(':')
+    name = parts[-1]
+    parts = name.split('/', 1)
+    if len(parts) == 2:
+        name = parts[-1]
+    return name
+
 def _format_dict(tags):
     output = []
     for key, value in tags.iteritems():
@@ -49,6 +58,8 @@ class SingleResourceTagger(object):
         self.taggers['ec2'] = EC2Tagger(dryrun, verbose, role=role, region=region)
         self.taggers['elasticfilesystem'] = EFSTagger(dryrun, verbose, role=role, region=region)
         self.taggers['rds'] = RDSTagger(dryrun, verbose, role=role, region=region)
+        self.taggers['elasticloadbalancing'] = LBTagger(dryrun, verbose, role=role, region=region)
+        self.taggers['elasticache'] = ElasticacheTagger(dryrun, verbose, role=role, region=region)
 
     def tag(self, resource_id, tags):
         if resource_id == "":
@@ -181,12 +192,9 @@ class EFSTagger(object):
         self.efs = _client('efs', role=role, region=region)
 
     def tag(self, resource_arn, tags):
-        parts = resource_arn.split(':')
-        file_system_id = parts[-1]
-        if file_system_id.startswith('file-system/'):
-            file_system_id = file_system_id[12:]
-
+        file_system_id = _arn_to_name(resource_arn)
         aws_tags = _dict_to_aws_tags(tags)
+
         if self.verbose:
             print "tagging %s with %s" % (file_system_id, _format_dict(tags))
         if not self.dryrun:
@@ -211,7 +219,13 @@ class RDSTagger(object):
         if self.verbose:
             print "tagging %s with %s" % (resource_arn, _format_dict(tags))
         if not self.dryrun:
-            self._rds_add_tags_to_resource(ResourceName=resource_arn, Tags=aws_tags)
+            try:
+                self._rds_add_tags_to_resource(ResourceName=resource_arn, Tags=aws_tags)
+            except botocore.exceptions.ClientError as exception:
+                if exception.response["Error"]["Code"] in ['DBInstanceNotFound']:
+                    print "Resource not found: %s" % resource_arn
+                else:
+                    raise exception
 
     def _is_retryable_exception(exception):
         return not isinstance(exception, botocore.exceptions.ClientError) or \
@@ -220,3 +234,68 @@ class RDSTagger(object):
     @retry(retry_on_exception=_is_retryable_exception, stop_max_delay=30000, wait_exponential_multiplier=1000)
     def _rds_add_tags_to_resource(self, **kwargs):
         return self.rds.add_tags_to_resource(**kwargs)
+
+class LBTagger(object):
+    def __init__(self, dryrun, verbose, role=None, region=None):
+        self.dryrun = dryrun
+        self.verbose = verbose
+        self.elb = _client('elb', role=role, region=region)
+        self.alb = _client('elbv2', role=role, region=region)
+
+    def tag(self, resource_arn, tags):
+        elb_name = _arn_to_name(resource_arn)
+        aws_tags = _dict_to_aws_tags(tags)
+
+        if self.verbose:
+            print "tagging %s with %s" % (resource_arn, _format_dict(tags))
+        if not self.dryrun:
+            try:
+                if ':loadbalancer/app/' in resource_arn:
+                    self._alb_add_tags(ResourceArns=[resource_arn], Tags=aws_tags)
+                else:
+                    self._elb_add_tags(LoadBalancerNames=[elb_name], Tags=aws_tags)
+            except botocore.exceptions.ClientError as exception:
+                if exception.response["Error"]["Code"] in ['LoadBalancerNotFound']:
+                    print "Resource not found: %s" % resource_arn
+                else:
+                    raise exception
+
+    def _is_retryable_exception(exception):
+        return not isinstance(exception, botocore.exceptions.ClientError) or \
+            (exception.response["Error"]["Code"] in ['RequestLimitExceeded'])
+
+    @retry(retry_on_exception=_is_retryable_exception, stop_max_delay=30000, wait_exponential_multiplier=1000)
+    def _elb_add_tags(self, **kwargs):
+        return self.elb.add_tags(**kwargs)
+
+    @retry(retry_on_exception=_is_retryable_exception, stop_max_delay=30000, wait_exponential_multiplier=1000)
+    def _alb_add_tags(self, **kwargs):
+        return self.alb.add_tags(**kwargs)
+
+class ElasticacheTagger(object):
+    def __init__(self, dryrun, verbose, role=None, region=None):
+        self.dryrun = dryrun
+        self.verbose = verbose
+        self.elasticache = _client('elasticache', role=role, region=region)
+
+    def tag(self, resource_arn, tags):
+        aws_tags = _dict_to_aws_tags(tags)
+        if self.verbose:
+            print "tagging %s with %s" % (resource_arn, _format_dict(tags))
+        if not self.dryrun:
+            try:
+                self._elasticache_add_tags_to_resource(ResourceName=resource_arn, Tags=aws_tags)
+            except botocore.exceptions.ClientError as exception:
+                if exception.response["Error"]["Code"] in ['CacheClusterNotFound']:
+                    print "Resource not found: %s" % resource_arn
+                else:
+                    raise exception
+
+    def _is_retryable_exception(exception):
+        return not isinstance(exception, botocore.exceptions.ClientError) or \
+            (exception.response["Error"]["Code"] in ['RequestLimitExceeded'])
+
+    @retry(retry_on_exception=_is_retryable_exception, stop_max_delay=30000, wait_exponential_multiplier=1000)
+    def _elasticache_add_tags_to_resource(self, **kwargs):
+        return self.elasticache.add_tags_to_resource(**kwargs)
+
