@@ -45,15 +45,28 @@ def _client(name, role, region):
 
 class SingleResourceTagger(object):
     def __init__(self, dryrun, verbose, role=None, region=None):
-        self.ec2 = EC2Tagger(dryrun, verbose, role=role, region=region)
+        self.taggers = {}
+        self.taggers['ec2'] = EC2Tagger(dryrun, verbose, role=role, region=region)
+        self.taggers['elasticfilesystem'] = EFSTagger(dryrun, verbose, role=role, region=region)
+        self.taggers['rds'] = RDSTagger(dryrun, verbose, role=role, region=region)
 
     def tag(self, resource_id, tags):
-        if resource_id.startswith('i-'):
-            self.ec2.tag_instance(resource_id, tags)
-        elif resource_id == "":
+        if resource_id == "":
             return
+
+        tagger = None
+        if resource_id.startswith('i-'):
+            tagger = self.taggers['ec2']
+        elif resource_id.startswith('arn:'):
+            parts = resource_id.split(':')
+            if len(parts) > 4:
+                product = parts[2]
+                tagger = self.taggers.get(product)
+
+        if tagger:
+            tagger.tag(resource_id, tags)
         else:
-            print "Tagging is not supported for this resource %s" % resource_id
+            print "Tagging is not support for this resource %s" % resource_id
 
 class MultipleResourceTagger(object):
     def __init__(self, dryrun, verbose, role=None, region=None):
@@ -98,7 +111,7 @@ class CSVResourceTagger(object):
         tags = {}
         for key, index in tag_index.iteritems():
             value = row[index]
-            if key != self.resource_id_column and value != "":
+            if key != self.resource_id_column and key != self.region_column and value != "":
                 tags[key] = value
 
         tagger = self._lookup_tagger(tag_index, row)
@@ -140,7 +153,7 @@ class EC2Tagger(object):
                     if volume_id:
                         self.volume_cache[instance_id].append(volume_id)
 
-    def tag_instance(self, instance_id, tags):
+    def tag(self, instance_id, tags):
         aws_tags = _dict_to_aws_tags(tags)
         resource_ids = [instance_id]
         resource_ids.extend(self.volume_cache.get(instance_id, []))
@@ -157,6 +170,53 @@ class EC2Tagger(object):
     def _ec2_describe_instances(self, **kwargs):
         return self.ec2.describe_instances(**kwargs)
 
-    #@retry(retry_on_exception=_is_retryable_exception, stop_max_delay=30000, wait_exponential_multiplier=1000)
+    @retry(retry_on_exception=_is_retryable_exception, stop_max_delay=30000, wait_exponential_multiplier=1000)
     def _ec2_create_tags(self, **kwargs):
         return self.ec2.create_tags(**kwargs)
+
+class EFSTagger(object):
+    def __init__(self, dryrun, verbose, role=None, region=None):
+        self.dryrun = dryrun
+        self.verbose = verbose
+        self.efs = _client('efs', role=role, region=region)
+
+    def tag(self, resource_arn, tags):
+        parts = resource_arn.split(':')
+        file_system_id = parts[-1]
+        if file_system_id.startswith('file-system/'):
+            file_system_id = file_system_id[12:]
+
+        aws_tags = _dict_to_aws_tags(tags)
+        if self.verbose:
+            print "tagging %s with %s" % (file_system_id, _format_dict(tags))
+        if not self.dryrun:
+            self._efs_create_tags(FileSystemId=file_system_id, Tags=aws_tags)
+
+    def _is_retryable_exception(exception):
+        return not isinstance(exception, botocore.exceptions.ClientError) or \
+            (exception.response["Error"]["Code"] in ['RequestLimitExceeded'])
+
+    @retry(retry_on_exception=_is_retryable_exception, stop_max_delay=30000, wait_exponential_multiplier=1000)
+    def _efs_create_tags(self, **kwargs):
+        return self.efs.create_tags(**kwargs)
+
+class RDSTagger(object):
+    def __init__(self, dryrun, verbose, role=None, region=None):
+        self.dryrun = dryrun
+        self.verbose = verbose
+        self.rds = _client('rds', role=role, region=region)
+
+    def tag(self, resource_arn, tags):
+        aws_tags = _dict_to_aws_tags(tags)
+        if self.verbose:
+            print "tagging %s with %s" % (resource_arn, _format_dict(tags))
+        if not self.dryrun:
+            self._rds_add_tags_to_resource(ResourceName=resource_arn, Tags=aws_tags)
+
+    def _is_retryable_exception(exception):
+        return not isinstance(exception, botocore.exceptions.ClientError) or \
+            (exception.response["Error"]["Code"] in ['RequestLimitExceeded'])
+
+    @retry(retry_on_exception=_is_retryable_exception, stop_max_delay=30000, wait_exponential_multiplier=1000)
+    def _rds_add_tags_to_resource(self, **kwargs):
+        return self.rds.add_tags_to_resource(**kwargs)
