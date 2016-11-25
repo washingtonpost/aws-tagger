@@ -60,6 +60,7 @@ class SingleResourceTagger(object):
         self.taggers['rds'] = RDSTagger(dryrun, verbose, role=role, region=region)
         self.taggers['elasticloadbalancing'] = LBTagger(dryrun, verbose, role=role, region=region)
         self.taggers['elasticache'] = ElasticacheTagger(dryrun, verbose, role=role, region=region)
+        self.taggers['s3'] = S3Tagger(dryrun, verbose, role=role, region=region)
 
     def tag(self, resource_id, tags):
         if resource_id == "":
@@ -73,6 +74,8 @@ class SingleResourceTagger(object):
             if len(parts) > 4:
                 product = parts[2]
                 tagger = self.taggers.get(product)
+        else:
+            tagger = self.taggers['s3']
 
         if tagger:
             tagger.tag(resource_id, tags)
@@ -171,7 +174,14 @@ class EC2Tagger(object):
         if self.verbose:
             print "tagging %s with %s" % (", ".join(resource_ids), _format_dict(tags))
         if not self.dryrun:
-            self._ec2_create_tags(Resources=resource_ids, Tags=aws_tags)
+            try:
+                self._ec2_create_tags(Resources=resource_ids, Tags=aws_tags)
+            except botocore.exceptions.ClientError as exception:
+                if exception.response["Error"]["Code"] in ['InvalidInstanceID.NotFound']:
+                    print "Resource not found: %s" % instance_id
+                else:
+                    raise exception
+
 
     def _is_retryable_exception(exception):
         return not isinstance(exception, botocore.exceptions.ClientError) or \
@@ -198,7 +208,13 @@ class EFSTagger(object):
         if self.verbose:
             print "tagging %s with %s" % (file_system_id, _format_dict(tags))
         if not self.dryrun:
-            self._efs_create_tags(FileSystemId=file_system_id, Tags=aws_tags)
+            try:
+                self._efs_create_tags(FileSystemId=file_system_id, Tags=aws_tags)
+            except botocore.exceptions.ClientError as exception:
+                if exception.response["Error"]["Code"] in ['FileSystemNotFound']:
+                    print "Resource not found: %s" % resource_arn
+                else:
+                    raise exception
 
     def _is_retryable_exception(exception):
         return not isinstance(exception, botocore.exceptions.ClientError) or \
@@ -298,4 +314,46 @@ class ElasticacheTagger(object):
     @retry(retry_on_exception=_is_retryable_exception, stop_max_delay=30000, wait_exponential_multiplier=1000)
     def _elasticache_add_tags_to_resource(self, **kwargs):
         return self.elasticache.add_tags_to_resource(**kwargs)
+
+class S3Tagger(object):
+    def __init__(self, dryrun, verbose, role=None, region=None):
+        self.dryrun = dryrun
+        self.verbose = verbose
+        self.s3 = _client('s3', role=role, region=region)
+
+    def tag(self, bucket_name, tags):
+        tags = {}
+        try:
+            response = self._s3_get_bucket_tagging(Bucket=bucket_name)
+            # add existing tags
+            for key, value in self._aws_tags_to_dict(response.get('TagSet', [])).iteritems:
+                if key not in tags:
+                    tags[key] = value
+        except botocore.exceptions.ClientError as exception:
+            if exception.response["Error"]["Code"] not in ['NoSuchTagSet', 'NoSuchBucket']:
+                raise exception
+
+        aws_tags = _dict_to_aws_tags(tags)
+        if self.verbose:
+            print "tagging %s with %s" % (bucket_name, _format_dict(tags))
+        if not self.dryrun:
+            try:
+                self._s3_put_bucket_tagging(Bucket=bucket_name, Tagging={'TagSet': aws_tags})
+            except botocore.exceptions.ClientError as exception:
+                if exception.response["Error"]["Code"] in ['NoSuchBucket']:
+                    print "Resource not found: %s" % bucket_name
+                else:
+                    raise exception
+
+    def _is_retryable_exception(exception):
+        return not isinstance(exception, botocore.exceptions.ClientError) or \
+            (exception.response["Error"]["Code"] in ['RequestLimitExceeded'])
+
+    @retry(retry_on_exception=_is_retryable_exception, stop_max_delay=30000, wait_exponential_multiplier=1000)
+    def _s3_get_bucket_tagging(self, **kwargs):
+        return self.s3.get_bucket_tagging(**kwargs)
+
+    @retry(retry_on_exception=_is_retryable_exception, stop_max_delay=30000, wait_exponential_multiplier=1000)
+    def _s3_put_bucket_tagging(self, **kwargs):
+        return self.s3.put_bucket_tagging(**kwargs)
 
