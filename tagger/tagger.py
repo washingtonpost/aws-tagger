@@ -190,7 +190,7 @@ class EC2Tagger(object):
             try:
                 self._ec2_create_tags(Resources=resource_ids, Tags=aws_tags)
             except botocore.exceptions.ClientError as exception:
-                if exception.response["Error"]["Code"] in ['InvalidInstanceID.NotFound']:
+                if exception.response["Error"]["Code"] in ['InvalidVolume.NotFound', 'InvalidInstanceID.NotFound']:
                     print "Resource not found: %s" % instance_id
                 else:
                     raise exception
