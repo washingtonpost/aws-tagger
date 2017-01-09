@@ -80,6 +80,8 @@ class SingleResourceTagger(object):
         tagger = None
         if resource_id.startswith('i-'):
             tagger = self.taggers['ec2']
+        elif resource_id.startswith('vol-'):
+            tagger = self.taggers['ec2']
         elif resource_id.startswith('arn:'):
             parts = resource_id.split(':')
             if len(parts) > 4:
