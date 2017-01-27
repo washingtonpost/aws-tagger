@@ -8,15 +8,15 @@ setup(
     packages=find_packages(),
     include_package_data=True,
     install_requires=[
-        'boto3>=1.4.1',
-        'botocore>=1.4.77',
+        'boto3>=1.4.4',
+        'botocore>=1.5.7',
         'click>=6.6',
-        'docutils>=0.12',
+        'docutils>=0.13.1',
         'futures>=3.0.5',
-        'jmespath>=0.9.0',
+        'jmespath>=0.9.1',
         'python-dateutil>=2.6.0',
         'retrying>=1.3.3',
-        's3transfer>=0.1.9',
+        's3transfer>=0.1.10',
         'six>=1.10.0'
     ],
     entry_points={
