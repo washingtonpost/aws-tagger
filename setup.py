@@ -27,6 +27,7 @@ setup(
     namespace_packages = ['tagger'],
     author="Patrick Cullen and the WaPo platform tools team",
     author_email="opensource@washingtonpost.com",
+    description='AWS bulk tagging tool',
     url="https://github.com/washingtonpost/aws-tagger",
     download_url = "https://github.com/washingtonpost/aws-tagger/tarball/v0.4.0",
     keywords = ['tag', 'tagger', 'tagging', 'aws'],
