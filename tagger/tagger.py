@@ -80,22 +80,38 @@ class SingleResourceTagger(object):
             return
 
         tagger = None
+        if resource_id.startswith('arn:'):
+            product, resource_id = self._parse_arn(resource_id)
+            if product:
+                tagger = self.taggers.get(product)
+        else:
+            tagger = self.taggers['s3']
+
+
         if resource_id.startswith('i-'):
             tagger = self.taggers['ec2']
         elif resource_id.startswith('vol-'):
             tagger = self.taggers['ec2']
-        elif resource_id.startswith('arn:'):
-            parts = resource_id.split(':')
-            if len(parts) > 4:
-                product = parts[2]
-                tagger = self.taggers.get(product)
-        else:
-            tagger = self.taggers['s3']
+        elif resource_id.startswith('snap-'):
+            tagger = self.taggers['ec2']
 
         if tagger:
             tagger.tag(resource_id, tags)
         else:
             print "Tagging is not support for this resource %s" % resource_id
+
+    def _parse_arn(self, resource_arn):
+        product = None
+        resource_id = None
+        parts = resource_arn.split(':')
+        if len(parts) > 5:
+            product = parts[2]
+            resource_id = parts[5]
+            resource_parts = resource_id.split('/')
+            if len(resource_parts) > 1:
+                resource_id = resource_parts[-1]
+
+        return product, resource_id
 
 class MultipleResourceTagger(object):
     def __init__(self, dryrun, verbose, role=None, region=None):
@@ -192,7 +208,7 @@ class EC2Tagger(object):
             try:
                 self._ec2_create_tags(Resources=resource_ids, Tags=aws_tags)
             except botocore.exceptions.ClientError as exception:
-                if exception.response["Error"]["Code"] in ['InvalidVolume.NotFound', 'InvalidInstanceID.NotFound']:
+                if exception.response["Error"]["Code"] in ['InvalidSnapshot.NotFound', 'InvalidVolume.NotFound', 'InvalidInstanceID.NotFound']:
                     print "Resource not found: %s" % instance_id
                 else:
                     raise exception
