@@ -80,6 +80,7 @@ class SingleResourceTagger(object):
             return
 
         tagger = None
+        resource_arn = resource_id
         if resource_id.startswith('arn:'):
             product, resource_id = self._parse_arn(resource_id)
             if product:
@@ -90,13 +91,16 @@ class SingleResourceTagger(object):
 
         if resource_id.startswith('i-'):
             tagger = self.taggers['ec2']
+            resource_arn = resource_id
         elif resource_id.startswith('vol-'):
             tagger = self.taggers['ec2']
+            resource_arn = resource_id
         elif resource_id.startswith('snap-'):
             tagger = self.taggers['ec2']
+            resource_arn = resource_id
 
         if tagger:
-            tagger.tag(resource_id, tags)
+            tagger.tag(resource_arn, tags)
         else:
             print "Tagging is not support for this resource %s" % resource_id
 
