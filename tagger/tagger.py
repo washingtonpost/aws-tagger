@@ -7,7 +7,7 @@ import csv
 
 def _is_retryable_exception(exception):
     return not isinstance(exception, botocore.exceptions.ClientError) or \
-        (exception.response["Error"]["Code"] in ['RequestLimitExceeded', 'Throttling'])
+        (exception.response["Error"]["Code"] in ['LimitExceededException', 'RequestLimitExceeded', 'Throttling'])
 
 def _arn_to_name(resource_arn):
     # Example: arn:aws:elasticloadbalancing:us-east-1:397853141546:loadbalancer/pb-adn-arc2

@@ -4,7 +4,7 @@ import warnings
 
 setup(
     name='aws-tagger',
-    version='0.5.1',
+    version='0.5.2',
     packages=find_packages(),
     include_package_data=True,
     install_requires=[
@@ -28,7 +28,7 @@ setup(
     author="Patrick Cullen and the WaPo platform tools team",
     author_email="opensource@washingtonpost.com",
     url="https://github.com/washingtonpost/aws-tagger",
-    download_url = "https://github.com/washingtonpost/aws-tagger/tarball/v0.5.1",
+    download_url = "https://github.com/washingtonpost/aws-tagger/tarball/v0.5.2",
     keywords = ['tag', 'tagger', 'tagging', 'aws'],
     classifiers = []
 )
