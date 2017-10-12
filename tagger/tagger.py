@@ -71,6 +71,7 @@ class SingleResourceTagger(object):
         self.taggers['cloudfront'] = CloudfrontTagger(dryrun, verbose, role=role, region=region)
         self.taggers['logs'] = CloudWatchLogsTagger(dryrun, verbose, role=role, region=region)
         self.taggers['dynamodb'] = DynamoDBTagger(dryrun, verbose, role=role, region=region)
+        self.taggers['lambda'] = LambdaTagger(dryrun, verbose, role=role, region=region)
 
     def tag(self, resource_id, tags):
         if resource_id == "":
@@ -273,6 +274,29 @@ class DynamoDBTagger(object):
     @retry(retry_on_exception=_is_retryable_exception, stop_max_delay=30000, wait_exponential_multiplier=1000)
     def _dynamodb_tag_resource(self, **kwargs):
         return self.dynamodb.tag_resource(**kwargs)
+
+
+class LambdaTagger(object):
+    def __init__(self, dryrun, verbose, role=None, region=None):
+        self.dryrun = dryrun
+        self.verbose = verbose
+        self.alambda = _client('lambda', role=role, region=region)
+
+    def tag(self, resource_arn, tags):
+        if self.verbose:
+            print "tagging %s with %s" % (resource_arn, _format_dict(tags))
+        if not self.dryrun:
+            try:
+                self._lambda_tag_resource(Resource=resource_arn, Tags=tags)
+            except botocore.exceptions.ClientError as exception:
+                if exception.response["Error"]["Code"] in ['ResourceNotFoundException']:
+                    print "Resource not found: %s" % resource_arn
+                else:
+                    raise exception
+
+    #TODO @retry(retry_on_exception=_is_retryable_exception, stop_max_delay=30000, wait_exponential_multiplier=1000)
+    def _lambda_tag_resource(self, **kwargs):
+        return self.alambda.tag_resource(**kwargs)
 
 
 class CloudWatchLogsTagger(object):
