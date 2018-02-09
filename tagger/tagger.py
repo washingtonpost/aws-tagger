@@ -21,13 +21,13 @@ def _arn_to_name(resource_arn):
 
 def _format_dict(tags):
     output = []
-    for key, value in tags.iteritems():
+    for (key, value) in tags.items():
         output.append("%s:%s" % (key, value))
 
     return ", ".join(output)
 
 def _dict_to_aws_tags(tags):
-    return [{'Key': key, 'Value': value} for key, value in tags.iteritems() if not key.startswith('aws:')]
+    return [{'Key': key, 'Value': value} for (key, value) in tags.items() if not key.startswith('aws:')]
 
 def _aws_tags_to_dict(aws_tags):
     return {x['Key']: x['Value'] for x in aws_tags if not x['Key'].startswith('aws:')}
@@ -58,9 +58,9 @@ def _client(name, role, region):
     return boto3.client(name, **kwargs)
 
 class SingleResourceTagger(object):
-    def __init__(self, dryrun, verbose, role=None, region=None):
+    def __init__(self, dryrun, verbose, role=None, region=None, tag_volumes=False):
         self.taggers = {}
-        self.taggers['ec2'] = EC2Tagger(dryrun, verbose, role=role, region=region)
+        self.taggers['ec2'] = EC2Tagger(dryrun, verbose, role=role, region=region, tag_volumes=tag_volumes)
         self.taggers['elasticfilesystem'] = EFSTagger(dryrun, verbose, role=role, region=region)
         self.taggers['rds'] = RDSTagger(dryrun, verbose, role=role, region=region)
         self.taggers['elasticloadbalancing'] = LBTagger(dryrun, verbose, role=role, region=region)
@@ -103,7 +103,7 @@ class SingleResourceTagger(object):
         if tagger:
             tagger.tag(resource_arn, tags)
         else:
-            print "Tagging is not support for this resource %s" % resource_id
+            print("Tagging is not support for this resource %s" % resource_id)
 
     def _parse_arn(self, resource_arn):
         product = None
@@ -119,17 +119,18 @@ class SingleResourceTagger(object):
         return product, resource_id
 
 class MultipleResourceTagger(object):
-    def __init__(self, dryrun, verbose, role=None, region=None):
-        self.tagger = SingleResourceTagger(dryrun, verbose, role=role, region=region)
+    def __init__(self, dryrun, verbose, role=None, region=None, tag_volumes=False):
+        self.tagger = SingleResourceTagger(dryrun, verbose, role=role, region=region, tag_volumes=tag_volumes)
 
     def tag(self, resource_ids, tags):
         for resource_id in resource_ids:
             self.tagger.tag(resource_id, tags)
 
 class CSVResourceTagger(object):
-    def __init__(self, dryrun, verbose, role=None, region=None):
+    def __init__(self, dryrun, verbose, role=None, region=None, tag_volumes=False):
         self.dryrun = dryrun
         self.verbose = verbose
+        self.tag_volumes = tag_volumes
         self.role = role
         self.region = region
         self.regional_tagger = {}
@@ -159,7 +160,7 @@ class CSVResourceTagger(object):
     def _tag_resource(self, tag_index, row):
         resource_id = row[tag_index[self.resource_id_column]]
         tags = {}
-        for key, index in tag_index.iteritems():
+        for (key, index) in tag_index.items():
             value = row[index]
             if key != self.resource_id_column and key != self.region_column and value != "":
                 tags[key] = value
@@ -178,17 +179,21 @@ class CSVResourceTagger(object):
 
         tagger = self.regional_tagger.get(region)
         if tagger is None:
-            tagger = SingleResourceTagger(self.dryrun, self.verbose, role=self.role, region=region)
+            tagger = SingleResourceTagger(self.dryrun, self.verbose, role=self.role, region=region, tag_volumes=self.tag_volumes)
             self.regional_tagger[region] = tagger
 
         return tagger
 
 class EC2Tagger(object):
-    def __init__(self, dryrun, verbose, role=None, region=None):
+    def __init__(self, dryrun, verbose, role=None, region=None, tag_volumes=False):
         self.dryrun = dryrun
         self.verbose = verbose
         self.ec2 = _client('ec2', role=role, region=region)
         self.volume_cache = {}
+        if tag_volumes:
+            self.add_volume_cache()
+
+    def add_volume_cache(self):
         #TODO implement paging for describe instances
         reservations = self._ec2_describe_instances(MaxResults=1000)
 
@@ -208,13 +213,13 @@ class EC2Tagger(object):
         resource_ids = [instance_id]
         resource_ids.extend(self.volume_cache.get(instance_id, []))
         if self.verbose:
-            print "tagging %s with %s" % (", ".join(resource_ids), _format_dict(tags))
+            print("tagging %s with %s" % (", ".join(resource_ids), _format_dict(tags)))
         if not self.dryrun:
             try:
                 self._ec2_create_tags(Resources=resource_ids, Tags=aws_tags)
             except botocore.exceptions.ClientError as exception:
                 if exception.response["Error"]["Code"] in ['InvalidSnapshot.NotFound', 'InvalidVolume.NotFound', 'InvalidInstanceID.NotFound']:
-                    print "Resource not found: %s" % instance_id
+                    print("Resource not found: %s" % instance_id)
                 else:
                     raise exception
 
@@ -238,13 +243,13 @@ class EFSTagger(object):
         aws_tags = _dict_to_aws_tags(tags)
 
         if self.verbose:
-            print "tagging %s with %s" % (file_system_id, _format_dict(tags))
+            print("tagging %s with %s" % (file_system_id, _format_dict(tags)))
         if not self.dryrun:
             try:
                 self._efs_create_tags(FileSystemId=file_system_id, Tags=aws_tags)
             except botocore.exceptions.ClientError as exception:
                 if exception.response["Error"]["Code"] in ['FileSystemNotFound']:
-                    print "Resource not found: %s" % resource_arn
+                    print("Resource not found: %s" % resource_arn)
                 else:
                     raise exception
 
@@ -261,13 +266,13 @@ class DynamoDBTagger(object):
     def tag(self, resource_arn, tags):
         aws_tags = _dict_to_aws_tags(tags)
         if self.verbose:
-            print "tagging %s with %s" % (resource_arn, _format_dict(tags))
+            print("tagging %s with %s" % (resource_arn, _format_dict(tags)))
         if not self.dryrun:
             try:
                 self._dynamodb_tag_resource(ResourceArn=resource_arn, Tags=aws_tags)
             except botocore.exceptions.ClientError as exception:
                 if exception.response["Error"]["Code"] in ['ResourceNotFoundException']:
-                    print "Resource not found: %s" % resource_arn
+                    print("Resource not found: %s" % resource_arn)
                 else:
                     raise exception
 
@@ -284,17 +289,17 @@ class LambdaTagger(object):
 
     def tag(self, resource_arn, tags):
         if self.verbose:
-            print "tagging %s with %s" % (resource_arn, _format_dict(tags))
+            print("tagging %s with %s" % (resource_arn, _format_dict(tags)))
         if not self.dryrun:
             try:
                 self._lambda_tag_resource(Resource=resource_arn, Tags=tags)
             except botocore.exceptions.ClientError as exception:
                 if exception.response["Error"]["Code"] in ['ResourceNotFoundException']:
-                    print "Resource not found: %s" % resource_arn
+                    print("Resource not found: %s" % resource_arn)
                 else:
                     raise exception
 
-    #TODO @retry(retry_on_exception=_is_retryable_exception, stop_max_delay=30000, wait_exponential_multiplier=1000)
+    @retry(retry_on_exception=_is_retryable_exception, stop_max_delay=30000, wait_exponential_multiplier=1000)
     def _lambda_tag_resource(self, **kwargs):
         return self.alambda.tag_resource(**kwargs)
 
@@ -307,14 +312,14 @@ class CloudWatchLogsTagger(object):
 
     def tag(self, resource_arn, tags):
         if self.verbose:
-            print "tagging %s with %s" % (resource_arn, _format_dict(tags))
+            print("tagging %s with %s" % (resource_arn, _format_dict(tags)))
         log_group = None
         parts = resource_arn.split(':')
         if len(parts) > 0:
             log_group = parts[-1]
 
         if not log_group:
-            print "Invalid ARN format for CloudWatch Logs: %s" % resource_arn
+            print("Invalid ARN format for CloudWatch Logs: %s" % resource_arn)
             return
 
         if not self.dryrun:
@@ -322,7 +327,7 @@ class CloudWatchLogsTagger(object):
                 self._logs_tag_log_group(logGroupName=log_group, tags=tags)
             except botocore.exceptions.ClientError as exception:
                 if exception.response["Error"]["Code"] in ['ResourceNotFoundException']:
-                    print "Resource not found: %s" % resource_arn
+                    print("Resource not found: %s" % resource_arn)
                 else:
                     raise exception
 
@@ -340,13 +345,13 @@ class RDSTagger(object):
     def tag(self, resource_arn, tags):
         aws_tags = _dict_to_aws_tags(tags)
         if self.verbose:
-            print "tagging %s with %s" % (resource_arn, _format_dict(tags))
+            print("tagging %s with %s" % (resource_arn, _format_dict(tags)))
         if not self.dryrun:
             try:
                 self._rds_add_tags_to_resource(ResourceName=resource_arn, Tags=aws_tags)
             except botocore.exceptions.ClientError as exception:
                 if exception.response["Error"]["Code"] in ['DBInstanceNotFound']:
-                    print "Resource not found: %s" % resource_arn
+                    print("Resource not found: %s" % resource_arn)
                 else:
                     raise exception
 
@@ -365,7 +370,7 @@ class LBTagger(object):
         aws_tags = _dict_to_aws_tags(tags)
 
         if self.verbose:
-            print "tagging %s with %s" % (resource_arn, _format_dict(tags))
+            print("tagging %s with %s" % (resource_arn, _format_dict(tags)))
         if not self.dryrun:
             try:
                 if ':loadbalancer/app/' in resource_arn:
@@ -375,7 +380,7 @@ class LBTagger(object):
                     self._elb_add_tags(LoadBalancerNames=[elb_name], Tags=aws_tags)
             except botocore.exceptions.ClientError as exception:
                 if exception.response["Error"]["Code"] in ['LoadBalancerNotFound']:
-                    print "Resource not found: %s" % resource_arn
+                    print("Resource not found: %s" % resource_arn)
                 else:
                     raise exception
 
@@ -395,14 +400,14 @@ class KinesisTagger(object):
 
     def tag(self, resource_arn, tags):
         if self.verbose:
-            print "tagging %s with %s" % (resource_arn, _format_dict(tags))
+            print("tagging %s with %s" % (resource_arn, _format_dict(tags)))
         if not self.dryrun:
             try:
                 stream_name = _arn_to_name(resource_arn)
                 self._kinesis_add_tags_to_stream(StreamName=stream_name, Tags=tags)
             except botocore.exceptions.ClientError as exception:
                 if exception.response["Error"]["Code"] in ['ResourceNotFoundException']:
-                    print "Resource not found: %s" % resource_arn
+                    print("Resource not found: %s" % resource_arn)
                 else:
                     raise exception
 
@@ -419,13 +424,13 @@ class ESTagger(object):
     def tag(self, resource_arn, tags):
         aws_tags = _dict_to_aws_tags(tags)
         if self.verbose:
-            print "tagging %s with %s" % (resource_arn, _format_dict(tags))
+            print("tagging %s with %s" % (resource_arn, _format_dict(tags)))
         if not self.dryrun:
             try:
                 self._es_add_tags(ARN=resource_arn, TagList=aws_tags)
             except botocore.exceptions.ClientError as exception:
                 if exception.response["Error"]["Code"] in ['ValidationException']:
-                    print "Resource not found: %s" % resource_arn
+                    print("Resource not found: %s" % resource_arn)
                 else:
                     raise exception
 
@@ -442,13 +447,13 @@ class ElasticacheTagger(object):
     def tag(self, resource_arn, tags):
         aws_tags = _dict_to_aws_tags(tags)
         if self.verbose:
-            print "tagging %s with %s" % (resource_arn, _format_dict(tags))
+            print("tagging %s with %s" % (resource_arn, _format_dict(tags)))
         if not self.dryrun:
             try:
                 self._elasticache_add_tags_to_resource(ResourceName=resource_arn, Tags=aws_tags)
             except botocore.exceptions.ClientError as exception:
                 if exception.response["Error"]["Code"] in ['CacheClusterNotFound']:
-                    print "Resource not found: %s" % resource_arn
+                    print("Resource not found: %s" % resource_arn)
                 else:
                     raise exception
 
@@ -465,13 +470,13 @@ class CloudfrontTagger(object):
     def tag(self, resource_arn, tags):
         aws_tags = _dict_to_aws_tags(tags)
         if self.verbose:
-            print "tagging %s with %s" % (resource_arn, _format_dict(tags))
+            print("tagging %s with %s" % (resource_arn, _format_dict(tags)))
         if not self.dryrun:
             try:
                 self._cloudfront_tag_resource(Resource=resource_arn, Tags={'Items': aws_tags})
             except botocore.exceptions.ClientError as exception:
                 if exception.response["Error"]["Code"] in ['NoSuchResource']:
-                    print "Resource not found: %s" % resource_arn
+                    print("Resource not found: %s" % resource_arn)
                 else:
                     raise exception
 
@@ -489,7 +494,7 @@ class S3Tagger(object):
         try:
             response = self._s3_get_bucket_tagging(Bucket=bucket_name)
             # add existing tags
-            for key, value in _aws_tags_to_dict(response.get('TagSet', [])).iteritems():
+            for (key, value) in _aws_tags_to_dict(response.get('TagSet', [])).items():
                 if key not in tags:
                     tags[key] = value
         except botocore.exceptions.ClientError as exception:
@@ -498,13 +503,13 @@ class S3Tagger(object):
 
         aws_tags = _dict_to_aws_tags(tags)
         if self.verbose:
-            print "tagging %s with %s" % (bucket_name, _format_dict(tags))
+            print("tagging %s with %s" % (bucket_name, _format_dict(tags)))
         if not self.dryrun:
             try:
                 self._s3_put_bucket_tagging(Bucket=bucket_name, Tagging={'TagSet': aws_tags})
             except botocore.exceptions.ClientError as exception:
                 if exception.response["Error"]["Code"] in ['NoSuchBucket']:
-                    print "Resource not found: %s" % bucket_name
+                    print("Resource not found: %s" % bucket_name)
                 else:
                     raise exception
 
