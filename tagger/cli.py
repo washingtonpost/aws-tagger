@@ -15,7 +15,7 @@ from pprint import pprint
 @click.option('--csv', help='CSV file to read data from.')
 def cli(dryrun, verbose, region, role, resource, tag, csv):
     if csv and (len(resource) > 0 or len(tag) > 0):
-        print "Cannot use --resource or --tag with --csv option"
+        print("Cannot use --resource or --tag with --csv option")
         sys.exit(1)
     if csv:
         tagger = CSVResourceTagger(dryrun, verbose, role, region, tag_volumes=True)
