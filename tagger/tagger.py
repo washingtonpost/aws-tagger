@@ -153,6 +153,9 @@ class CSVResourceTagger(object):
     def _parse_header(self, header_row):
         tag_index = {}
         for index, name in enumerate(header_row):
+            # Handle BOM.
+            if index == 0:
+                name = name.lstrip('\ufeff')            
             tag_index[name] = index
 
         return tag_index
