@@ -19,7 +19,7 @@ aws-tagger --resource i-07a9d0e5 --resource i-0456e3a9 --tag "App:Foobar" --tag 
 ```
 
 ### Tag multiple resources from a CSV file
-AWS Tagger can also take input from a CSV file. The column names of the CSV file are the tag keys and the colume values are the tag values.
+AWS Tagger can also take input from a CSV file. The column names of the CSV file are the tag keys and the column values are the tag values.
 The resource id must be in a column called Id. To switch between regions, you can add a Region column with the standard AWS regions names like us-east-1. If the Region column is missing it assumes that the region is the same as the AWS credentials.
 ```
 echo 'Id,Region,App' > my-resources.csv
