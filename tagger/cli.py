@@ -42,8 +42,10 @@ def _tag_options_to_dict(tag_options):
 
 
 @cli.command()
-def export_ec2_untagged():
-    instances = fetch.ec2_untagged()
+@click.option('--region-name', default="us-east-1")
+@click.option('--tag-key', default=False)
+def export_ec2_untagged(region_name, tag_key):
+    instances = fetch.ec2_without_tag(region_name=region_name, tag_key=tag_key)
     click.echo("fetched ... {0}".format(len(instances)))
     filename = "ec2_untagged.csv"
     export.array_dict(instances, filename)

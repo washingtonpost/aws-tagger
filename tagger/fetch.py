@@ -22,9 +22,10 @@ def ec2_without_tag(region_name='us-east-1', tag_key='Name'):
     response = _ec2_describe_instances(region_name)
     for reservation in response['Reservations']:
         for instance in reservation['Instances']:
-            if tag_key not in instance['Tags'].keys():
-                result.append(instance)
-    return intances
+            tag_keys = [t['Key'] for t in instance['Tags']]
+            if tag_key not in tag_keys:
+                results.append(instance)
+    return results 
 
 
 def _ec2_describe_instances(region_name):
