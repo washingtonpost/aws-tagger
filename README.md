@@ -100,4 +100,19 @@ AWS Tagger also supports cross-account role assumption. You will still need to c
 
 ```
 aws-tagger --role arn:aws:iam::11111111111:role/MyRole --resource i-07a9d0e5 --tag "App:Foobar"
+```
 
+
+## Export Usage
+
+You can export CSV of resources which do not have a specific tag,
+
+```
+# ec2
+aws-tagger export_ec2_untagged --tag-key "costcenter"
+```
+
+```
+# cloudformation
+aws-tagger export_cf_untagged --tag-key "costcenter"
+```
