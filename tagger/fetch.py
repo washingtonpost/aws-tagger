@@ -25,7 +25,7 @@ def ec2_without_tag(region_name='us-east-1', tag_key='Name'):
             tag_keys = [t['Key'] for t in instance['Tags']]
             if tag_key not in tag_keys:
                 results.append(instance)
-    return results 
+    return results
 
 
 def _ec2_describe_instances(region_name):
@@ -35,4 +35,22 @@ def _ec2_describe_instances(region_name):
     session = boto3.Session(region_name=region_name)
     ec2 = session.client('ec2')
     return ec2.describe_instances()
+
+
+def cf_without_tag(region_name=None, tag_key=None):
+    results = []
+    response = _cf_describe_stacks(region_name)
+    for stack in response['Stacks']:
+        tag_keys = [t['Key'] for t in stack['Tags']]
+        if tag_key not in tag_keys:
+            results.append(stack)
+    return results
+
+def _cf_describe_stacks(region_name):
+    """
+    Execute cloudformation describe stacks request
+    """
+    session = boto3.Session(region_name=region_name)
+    cf = session.client('cloudformation')
+    return cf.describe_stacks()
 
