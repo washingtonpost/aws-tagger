@@ -1,26 +1,11 @@
 import csv
 
 
-def array_dict(results, filename):
-    cols = ['InstanceId', 'InstanceType', 'Tags']
-    headers = cols
+def ec2(filename, instances):
+    headers = ['InstanceId', 'InstanceType', 'Tags']
+    _write_csv(filename, headers, instances)
 
-    try:
-        with open(filename, 'w') as csvfile:
-            writer = csv.writer(csvfile, delimiter=' ',
-                            quotechar='|', quoting=csv.QUOTE_MINIMAL)
-            writer.writerow(cols)
-            for result in results:
-                row = []
-                row.append(result['InstanceId'] or "")
-                row.append(result['InstanceType'] or "")
-                row.append(result['Tags'] or [])
-                writer.writerow(row)
-    except IOError:
-        print("I/O error")
-
-
-def cloudformation(stacks, filename):
+def cloudformation(filename, stacks):
     headers = ['StackId', 'StackName', 'Tags']
     _write_csv(filename, headers, stacks)
 

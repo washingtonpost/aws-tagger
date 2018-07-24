@@ -53,7 +53,7 @@ def export_ec2_untagged(region_name, tag_key):
     click.echo("... ec2: fetched ... {0}".format(count))
     filename = "ec2_untagged.csv"
     if count > 0:
-        export.array_dict(instances, filename)
+        export.array_dict(filename, instances)
         click.echo("... ec2: exported to {}".format(filename))
 
 
@@ -66,7 +66,7 @@ def export_cf_untagged(region_name, tag_key):
     click.echo("... cf: fetched {0}".format(count))
     filename = "cf_untagged.csv"
     if count > 0:
-        export.cloudformation(cfs, filename)
+        export.cloudformation(filename, cfs)
         click.echo("... cf: exported to {}".format(filename))
 
 
