@@ -96,6 +96,19 @@ class SingleResourceTagger(object):
         elif resource_id.startswith('vol-'):
             tagger = self.taggers['ec2']
             resource_arn = resource_id
+        elif resource_id.startswith('nat-'):
+            tagger = self.taggers['ec2']
+            resource_arn = resource_id
+        elif resource_id.startswith('vpn-'):
+            tagger = self.taggers['ec2']
+            resource_arn = resource_id
+        elif resource_id.startswith('cgw-'):
+            tagger = self.taggers['ec2']
+            resource_arn = resource_id
+        elif resource_id.startswith('vgw-'):
+            tagger = self.taggers['ec2']
+            resource_arn = resource_id
+
         elif resource_id.startswith('snap-'):
             tagger = self.taggers['ec2']
             resource_arn = resource_id
@@ -375,7 +388,7 @@ class LBTagger(object):
             try:
                 if ':loadbalancer/app/' in resource_arn:
                     self._alb_add_tags(ResourceArns=[resource_arn], Tags=aws_tags)
-                if ':loadbalancer/net/' in resource_arn:
+                elif ':loadbalancer/net/' in resource_arn:
                     self._alb_add_tags(ResourceArns=[resource_arn], Tags=aws_tags)
                 else:
                     elb_name = _arn_to_name(resource_arn)
@@ -522,4 +535,3 @@ class S3Tagger(object):
     @retry(retry_on_exception=_is_retryable_exception, stop_max_delay=30000, wait_exponential_multiplier=1000)
     def _s3_put_bucket_tagging(self, **kwargs):
         return self.s3.put_bucket_tagging(**kwargs)
-
