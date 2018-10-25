@@ -375,6 +375,8 @@ class LBTagger(object):
             try:
                 if ':loadbalancer/app/' in resource_arn:
                     self._alb_add_tags(ResourceArns=[resource_arn], Tags=aws_tags)
+                if ':loadbalancer/net/' in resource_arn:
+                    self._alb_add_tags(ResourceArns=[resource_arn], Tags=aws_tags)
                 else:
                     elb_name = _arn_to_name(resource_arn)
                     self._elb_add_tags(LoadBalancerNames=[elb_name], Tags=aws_tags)
