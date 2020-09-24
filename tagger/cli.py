@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 import click
 import sys
-from .tagger import MultipleResourceTagger, CSVResourceTagger
+from tagger import MultipleResourceTagger, CSVResourceTagger
 from pprint import pprint
 
 @click.command()

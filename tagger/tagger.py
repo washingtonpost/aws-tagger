@@ -7,7 +7,7 @@ import csv
 
 def _is_retryable_exception(exception):
     return not isinstance(exception, botocore.exceptions.ClientError) or \
-        (exception.response["Error"]["Code"] in ['LimitExceededException', 'RequestLimitExceeded', 'Throttling'])
+        (exception.response["Error"]["Code"] in ['LimitExceededException', 'RequestLimitExceeded', 'Throttling', 'ParamValidationError'])
 
 def _arn_to_name(resource_arn):
     # Example: arn:aws:elasticloadbalancing:us-east-1:397853141546:loadbalancer/pb-adn-arc2
@@ -492,6 +492,8 @@ class S3Tagger(object):
 
     def tag(self, bucket_name, tags):
         try:
+            if bucket_name.startswith('arn:'):
+                bucket_name = _arn_to_name(bucket_name)
             response = self._s3_get_bucket_tagging(Bucket=bucket_name)
             # add existing tags
             for (key, value) in _aws_tags_to_dict(response.get('TagSet', [])).items():
