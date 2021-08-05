@@ -183,6 +183,60 @@ class CSVResourceTagger(object):
             self.regional_tagger[region] = tagger
 
         return tagger
+        
+
+class CSVResourceTaggerWithTags(object):
+    def __init__(self, dryrun, verbose, role=None, region=None, tag_volumes=False):
+        self.dryrun = dryrun
+        self.verbose = verbose
+        self.tag_volumes = tag_volumes
+        self.role = role
+        self.region = region
+        self.regional_tagger = {}
+        self.resource_id_column = 'Id'
+        self.region_column = 'Region'
+
+    def tag(self, filename,tags):
+        with open(filename, 'rU') as csv_file:
+            reader = csv.reader(csv_file)
+            header_row = True
+            tag_index = None
+
+            for row in reader:
+                if header_row:
+                    header_row = False
+                    tag_index = self._parse_header(row)
+                else:
+                    self._tag_resource(tag_index, row,tags)
+
+    def _parse_header(self, header_row):
+        tag_index = {}
+        for index, name in enumerate(header_row):
+            tag_index[name] = index
+
+        return tag_index
+
+    def _tag_resource(self, tag_index, row, tags):
+        resource_id = row[tag_index[self.resource_id_column]]
+        tagger = self._lookup_tagger(tag_index, row)
+        tagger.tag(resource_id, tags)
+
+    def _lookup_tagger(self, tag_index, row):
+        region = self.region
+        region_index = tag_index.get(self.region_column)
+
+        if region_index is not None:
+            region = row[region_index]
+        if region == '':
+            region = None
+
+        tagger = self.regional_tagger.get(region)
+        if tagger is None:
+            tagger = SingleResourceTagger(self.dryrun, self.verbose, role=self.role, region=region, tag_volumes=self.tag_volumes)
+            self.regional_tagger[region] = tagger
+
+        return tagger
+
 
 class EC2Tagger(object):
     def __init__(self, dryrun, verbose, role=None, region=None, tag_volumes=False):

@@ -29,6 +29,13 @@ echo 'i-22222222,us-east-1,Foobar' >> my-resources.csv
 aws-tagger --csv my-resources.csv
 ```
 
+### Tag multiple resources from a CSV file with no need to specify tags in CSV file 
+AS AWS Tagger can take input from CSV file but for now, one has to spcify the tag values within the csv file. The support is extended for cases where resource ids and regions need to be sourced from CSV file and bulk tagging needs to be done for all resources,e.g. specify a single tag value for all resources present in CSV file.
+
+```
+python cli.py --csv my-resources.csv --tag "tag:value"
+```
+
 ## AWS Resource Support
 AWS Tagger supports the following AWS resource types. 
 
